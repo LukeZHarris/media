@@ -4,14 +4,20 @@ find . -type f \( -iname '*.m2ts' \) -print0 | while IFS= read -r -d '' f; do
 
   echo "Encoding: $f"
 
+  # Capture the original file's modification time
+  src_mtime=$(stat -f '%m' "$f")
+  creation_time=$(date -r "$src_mtime" -u '+%Y-%m-%dT%H:%M:%S.000000Z')
+
   ffmpeg -nostdin -hide_banner -loglevel error -nostats -y -i "$f" \
     -map 0:v:0 -map '0:a?' \
     -vf "bwdif=mode=send_frame:parity=tff" \
     -c:v libx265 -crf 24 -preset medium -tag:v hvc1 \
     -c:a aac -b:a 160k \
     -movflags +faststart \
+    -metadata creation_time="$creation_time" \
     "$tmp" &&
   mv -f "$tmp" "$out" &&
+  touch -t "$(date -r "$src_mtime" '+%Y%m%d%H%M.%S')" "$out" &&
   rm -f "$f" &&
-  echo "Done: $out" || echo "FAILED: $f"
+  echo "Done: $out" || { rm -f "$tmp"; echo "FAILED: $f"; }
 done
